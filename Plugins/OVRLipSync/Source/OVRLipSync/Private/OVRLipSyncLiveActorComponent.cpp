@@ -23,13 +23,17 @@
 
 #include "OVRLipSyncLiveActorComponent.h"
 
+#if PLATFORM_ANDROID
 #include "AndroidPermissionCallbackProxy.h"
 #include "AndroidPermissionFunctionLibrary.h"
+#endif
 #include "OVRLipSyncContextWrapper.h"
 #include "Voice/Public/VoiceModule.h"
 
 #include <Core.h>
 #include <algorithm>
+
+#include "OVRLipSyncModule.h"
 
 #ifndef DEFAULT_DEVICE_NAME
 #define DEFAULT_DEVICE_NAME TEXT("Default Device")

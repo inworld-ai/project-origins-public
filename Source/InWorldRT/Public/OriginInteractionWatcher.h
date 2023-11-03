@@ -13,7 +13,7 @@
 #include "InworldCharacterPlaybackHistory.h"
 #include "OriginInteractionWatcher.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnOriginInteraction, class UInworldCharacterComponent*, InworldCharacter, bool, bPlayer, FName, InteractionId, FString, Text);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnOriginInteraction, class UInworldCharacterComponent*, InworldCharacter, bool, bPlayer, FString, InteractionId, FString, Text);
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class INWORLDRT_API UOriginInteractionWatcher : public UActorComponent

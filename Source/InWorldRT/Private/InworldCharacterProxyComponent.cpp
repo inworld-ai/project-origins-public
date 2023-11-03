@@ -4,7 +4,7 @@
 #include "InworldCharacterProxyComponent.h"
 #include "InworldCharacterProxy.h"
 
-void UInworldCharacterProxyComponent::SetAgentId(const FName& InAgentId)
+void UInworldCharacterProxyComponent::Possess(const FInworldAgentInfo& AgentInfo)
 {
 	AInworldCharacterProxy* InworldCharacterProxyOwner = GetOwnerAsInworldCharacterProxy();
 	if (!InworldCharacterProxyOwner)
@@ -12,10 +12,11 @@ void UInworldCharacterProxyComponent::SetAgentId(const FName& InAgentId)
 		return;
 	}
 
-	InworldCharacterProxyOwner->SetAgentId(InAgentId);
+	InworldCharacterProxyOwner->Possess(AgentInfo);
+	Super::Possess(AgentInfo);
 }
 
-void UInworldCharacterProxyComponent::SetGivenName(const FString& InGivenName)
+void UInworldCharacterProxyComponent::Unpossess()
 {
 	AInworldCharacterProxy* InworldCharacterProxyOwner = GetOwnerAsInworldCharacterProxy();
 	if (!InworldCharacterProxyOwner)
@@ -23,10 +24,47 @@ void UInworldCharacterProxyComponent::SetGivenName(const FString& InGivenName)
 		return;
 	}
 
-	InworldCharacterProxyOwner->SetGivenName(InGivenName);
+	InworldCharacterProxyOwner->Unpossess();
+	Super::Unpossess();
 }
 
-void UInworldCharacterProxyComponent::HandlePacket(TSharedPtr<Inworld::FInworldPacket> Packet)
+bool UInworldCharacterProxyComponent::StartPlayerInteraction(UInworldPlayerComponent* Player)
+{
+	Super::StartPlayerInteraction(Player);
+
+	AInworldCharacterProxy* InworldCharacterProxyOwner = GetOwnerAsInworldCharacterProxy();
+	if (!InworldCharacterProxyOwner)
+	{
+		return false;
+	}
+
+	UInworldCharacterComponent* InworldCharacterComponent = InworldCharacterProxyOwner->GetBestInworldCharacterComponent();
+	if (InworldCharacterComponent)
+	{
+		return InworldCharacterComponent->StartPlayerInteraction(Player);
+	}
+	return false;
+}
+
+bool UInworldCharacterProxyComponent::StopPlayerInteraction(UInworldPlayerComponent* Player)
+{
+	Super::StopPlayerInteraction(Player);
+
+	AInworldCharacterProxy* InworldCharacterProxyOwner = GetOwnerAsInworldCharacterProxy();
+	if (!InworldCharacterProxyOwner)
+	{
+		return false;
+	}
+
+	UInworldCharacterComponent* InworldCharacterComponent = InworldCharacterProxyOwner->GetBestInworldCharacterComponent();
+	if (InworldCharacterComponent)
+	{
+		return InworldCharacterComponent->StopPlayerInteraction(Player);
+	}
+	return false;
+}
+
+void UInworldCharacterProxyComponent::HandlePacket(TSharedPtr<FInworldPacket> Packet)
 {
 	AInworldCharacterProxy* InworldCharacterProxyOwner = GetOwnerAsInworldCharacterProxy();
 	if (!InworldCharacterProxyOwner)
@@ -38,36 +76,6 @@ void UInworldCharacterProxyComponent::HandlePacket(TSharedPtr<Inworld::FInworldP
 	if (InworldCharacterComponent)
 	{
 		InworldCharacterComponent->HandlePacket(Packet);
-	}
-}
-
-void UInworldCharacterProxyComponent::HandlePlayerTalking(const Inworld::FTextEvent& Event)
-{
-	AInworldCharacterProxy* InworldCharacterProxyOwner = GetOwnerAsInworldCharacterProxy();
-	if (!InworldCharacterProxyOwner)
-	{
-		return;
-	}
-
-	UInworldCharacterComponent* InworldCharacterComponent = InworldCharacterProxyOwner->GetBestInworldCharacterComponent();
-	if (InworldCharacterComponent)
-	{
-		InworldCharacterComponent->HandlePlayerTalking(Event);
-	}
-}
-
-void UInworldCharacterProxyComponent::HandlePlayerInteraction(bool bInteracting)
-{
-	AInworldCharacterProxy* InworldCharacterProxyOwner = GetOwnerAsInworldCharacterProxy();
-	if (!InworldCharacterProxyOwner)
-	{
-		return;
-	}
-
-	UInworldCharacterComponent* InworldCharacterComponent = InworldCharacterProxyOwner->GetBestInworldCharacterComponent();
-	if (InworldCharacterComponent)
-	{
-		InworldCharacterComponent->HandlePlayerInteraction(bInteracting);
 	}
 }
 

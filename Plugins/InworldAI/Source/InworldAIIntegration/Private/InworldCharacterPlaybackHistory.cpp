@@ -1,29 +1,35 @@
-/**
- * Copyright 2022 Theai, Inc. (DBA Inworld)
- *
- * Use of this source code is governed by the Inworld.ai Software Development Kit License Agreement
- * that can be found in the LICENSE.md file or at https://www.inworld.ai/sdk-license
- */
+// Copyright 2023 Theai, Inc. (DBA Inworld) All Rights Reserved.
 
 #include "InworldCharacterPlaybackHistory.h"
 #include "InworldCharacterMessage.h"
-#include "InworldCharacterPlaybackAudio.h"
 
-void FInworldCharacterInteractionHistory::Add(const Inworld::FCharacterMessageUtterance& Message, bool bPlayerInteraction)
+void FInworldCharacterInteractionHistory::Add(const FString& InteractionId, const FString& UtteranceId, const FString& Text, bool bPlayerInteraction
+	// ORIGINS MODIFY
+	, bool bInTextFinal
+	// END ORIGINS MODIFY
+)
 {
-	if (IsInteractionCanceled(Message.InteractionId))
+	if (IsInteractionCanceled(InteractionId))
 	{
 		return;
 	}
 
-	auto* Interaction = Interactions.FindByPredicate([&Message](const auto& I) { return I.Message.UtteranceId == Message.UtteranceId; });
+	auto* Interaction = Interactions.FindByPredicate([UtteranceId](const auto& I) { return I.UtteranceId == UtteranceId; });
 	if (Interaction)
 	{
-		*Interaction = FInworldCharacterInteraction(Message, bPlayerInteraction);
+		*Interaction = FInworldCharacterInteraction(InteractionId, UtteranceId, Text, bPlayerInteraction
+		// ORIGINS MODIFY
+		, bInTextFinal
+		// END ORIGINS MODIFY
+		);
 		return;
 	}
 
-	Interactions.Emplace(Message, bPlayerInteraction);
+	Interactions.Emplace(InteractionId, UtteranceId, Text, bPlayerInteraction
+		// ORIGINS MODIFY
+		, bInTextFinal
+		// END ORIGINS MODIFY
+	);
 
 	if (Interactions.Num() > MaxEntries)
 	{
@@ -42,41 +48,21 @@ void FInworldCharacterInteractionHistory::SetMaxEntries(uint32 Val)
 	Interactions.Reserve(MaxEntries);
 }
 
-void FInworldCharacterInteractionHistory::CancelUtterance(const FName& InteractionId, const FName& UtteranceId)
+void FInworldCharacterInteractionHistory::CancelUtterance(const FString& InteractionId, const FString& UtteranceId)
 {
 	CanceledInteractions.Add(InteractionId);
-	Interactions.RemoveAll([&UtteranceId, &InteractionId](const auto& I) { return I.Message.UtteranceId == UtteranceId && I.Message.InteractionId == InteractionId; });
+	Interactions.RemoveAll([&UtteranceId, &InteractionId](const auto& I) { return I.UtteranceId == UtteranceId && I.InteractionId == InteractionId; });
 }
 
-bool FInworldCharacterInteractionHistory::IsInteractionCanceled(const FName& InteractionId) const
+bool FInworldCharacterInteractionHistory::IsInteractionCanceled(const FString& InteractionId) const
 {
 	int32 Idx;
 	return CanceledInteractions.Find(InteractionId, Idx);
 }
 
-void FInworldCharacterInteractionHistory::ClearCanceledInteraction(const FName& InteractionId)
+void FInworldCharacterInteractionHistory::ClearCanceledInteraction(const FString& InteractionId)
 {
 	CanceledInteractions.Remove(InteractionId);
-}
-
-FInworldCharacterInteraction::FInworldCharacterInteraction(const Inworld::FCharacterMessageUtterance& InMessage, bool InPlayerInteraction)
-	: Text(InMessage.Text)
-	, bPlayerInteraction(InPlayerInteraction)
-	, Message(InMessage)
-{
-
-}
-
-void UInworldCharacterPlaybackHistory::HandlePlayerTalking(const Inworld::FCharacterMessageUtterance& Message)
-{
-	auto CurrentMessage = GetCurrentMessage();
-	if (CurrentMessage.IsValid() && CurrentMessage->InteractionId != Message.InteractionId)
-	{
-		InteractionHistory.CancelUtterance(CurrentMessage->InteractionId, CurrentMessage->UtteranceId);
-	}
-
-	InteractionHistory.Add(Message, true);
-	OnInteractionsChanged.Broadcast(InteractionHistory.GetInteractions());
 }
 
 void UInworldCharacterPlaybackHistory::BeginPlay_Implementation()
@@ -84,15 +70,28 @@ void UInworldCharacterPlaybackHistory::BeginPlay_Implementation()
 	Super::BeginPlay_Implementation();
 
 	InteractionHistory.SetMaxEntries(InteractionHistoryMaxEntries);
+
 }
 
-void UInworldCharacterPlaybackHistory::Visit(const Inworld::FCharacterMessageUtterance& Message)
+void UInworldCharacterPlaybackHistory::OnCharacterUtterance_Implementation(const FCharacterMessageUtterance& Message)
 {
-	InteractionHistory.Add(Message, false);
+	InteractionHistory.Add(Message);
 	OnInteractionsChanged.Broadcast(InteractionHistory.GetInteractions());
 }
 
-void UInworldCharacterPlaybackHistory::Visit(const Inworld::FCharacterMessageInteractionEnd& Message)
+void UInworldCharacterPlaybackHistory::OnCharacterUtteranceInterrupt_Implementation(const FCharacterMessageUtterance& Message)
+{
+	InteractionHistory.CancelUtterance(Message.InteractionId, Message.UtteranceId);
+	OnInteractionsChanged.Broadcast(InteractionHistory.GetInteractions());
+}
+
+void UInworldCharacterPlaybackHistory::OnCharacterPlayerTalk_Implementation(const FCharacterMessagePlayerTalk& Message)
+{
+	InteractionHistory.Add(Message);
+	OnInteractionsChanged.Broadcast(InteractionHistory.GetInteractions());
+}
+
+void UInworldCharacterPlaybackHistory::OnCharacterInteractionEnd_Implementation(const FCharacterMessageInteractionEnd& Message)
 {
 	InteractionHistory.ClearCanceledInteraction(Message.InteractionId);
 }

@@ -1,9 +1,4 @@
-/**
- * Copyright 2022 Theai, Inc. (DBA Inworld)
- *
- * Use of this source code is governed by the Inworld.ai Software Development Kit License Agreement
- * that can be found in the LICENSE.md file or at https://www.inworld.ai/sdk-license
- */
+// Copyright 2023 Theai, Inc. (DBA Inworld) All Rights Reserved.
 
 #pragma once
 
@@ -17,12 +12,12 @@ class INWORLDAIINTEGRATION_API UInworldCharacterPlaybackTrigger : public UInworl
 {
 	GENERATED_BODY()
 
+protected:
+	virtual void OnCharacterTrigger_Implementation(const FCharacterMessageTrigger& Message) override;
+	virtual void OnCharacterInteractionEnd_Implementation(const FCharacterMessageInteractionEnd& Message) override;
 public:
-	virtual void Visit(const Inworld::FCharacterMessageTrigger& Event) override;
-	virtual void Visit(const Inworld::FCharacterMessageInteractionEnd& Event) override;
-
+	void FlushTriggers();
 private:
-	TMap<FName, Inworld::FCharacterMessageTrigger> PendingTriggers;
-	TSet<FName> FinalizedInteractions;
+	TArray<FString> Triggers;
 };
 

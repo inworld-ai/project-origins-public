@@ -1,48 +1,24 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 2023 Theai, Inc. (DBA Inworld) All Rights Reserved.
 
 using System.IO;
 using UnrealBuildTool;
 
 public class InworldAIIntegration : ModuleRules
 {
-    private string ThirdPartyDirectory
-    {
-        get
-        {
-            return Path.GetFullPath(Path.Combine(ModuleDirectory, "../../ThirdParty/"));
-        }
-    }
-
-    private string ThirdPartyLibrariesDirectory
-    {
-        get
-        {
-            if(Target.Platform == UnrealTargetPlatform.Win64)
-            {
-                return Path.Combine(ThirdPartyDirectory, "Libraries/Win64");
-            }
-            else if(Target.Platform == UnrealTargetPlatform.Mac)
-            {
-                return Path.Combine(ThirdPartyDirectory, "Libraries/Mac");
-            }
-            else
-            {
-                return Path.Combine(ThirdPartyDirectory, "Libraries/Unknown");
-            }
-        }
-    }
-
     public InworldAIIntegration(ReadOnlyTargetRules Target) : base(Target)
-	{
+    {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
+        //bUseUnity = false;
+
         PublicDependencyModuleNames.AddRange(
-            new string[] 
-            { 
-                "Core", 
-                "CoreUObject", 
-                "Engine", 
+            new string[]
+            {
+                "Core",
+                "CoreUObject",
+                "Engine",
                 "InputCore",
+                "AudioCaptureCore",
                 "InworldAIClient",
             });
 
@@ -50,29 +26,38 @@ public class InworldAIIntegration : ModuleRules
         PrivateDependencyModuleNames.AddRange(
             new string[]
             {
-                "AudioCapture",
+                "ApplicationCore",
                 "AudioMixer",
+                "InworldAIPlatform",
+                "Networking",
+                "Sockets",
             }
             );
 
-        PublicIncludePaths.Add(Path.Combine(ThirdPartyDirectory, "Includes"));
-        
-        if(Target.Platform == UnrealTargetPlatform.Win64)
+        if (Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Linux)
         {
-            PrivateDefinitions.Add("INWORLD_WEB_RTC=1");
-        
-            PublicAdditionalLibraries.Add(Path.Combine(ThirdPartyLibrariesDirectory, "webrtc_aec_plugin.dll.lib"));
+            /***********************************************************
+                Uncomment below to enable Pixel Streaming Microphone
+               Add "PixelStreaming" as Plugin used in InworldAI.uplugin
 
-            RuntimeDependencies.Add(Path.Combine("$(BinaryOutputDir)", "webrtc_aec_plugin.dll"),
-                Path.Combine(ThirdPartyLibrariesDirectory, "webrtc_aec_plugin.dll"));
+                "Plugins": [
+		            {
+			            "Name": "PixelStreaming",
+			            "Enabled": true,
+			            "PlatformAllowList": [ "Win64", "Linux" ]
+		            }
+	            ],
+            ************************************************************/
+
+            //PrivateDependencyModuleNames.Add("PixelStreaming");
+            //PrivateDefinitions.Add("INWORLD_PIXEL_STREAMING=1");
         }
 
-        PrivateDefinitions.Add("INWORLD_ONSCREEN_LOG=0");
-        PrivateDefinitions.Add("INWORLD_ONSCREEN_LOG_ERROR=0");
+        if (Target.bBuildDeveloperTools || (Target.Configuration != UnrealTargetConfiguration.Shipping && Target.Configuration != UnrealTargetConfiguration.Test))
+        {
+            PublicDependencyModuleNames.Add("GameplayDebugger");
+            PrivateDefinitions.Add("INWORLD_DEBUGGER_SLOT=5");
+        }
 
-        PrivateDependencyModuleNames.Add("OVRLipSync");
-        PrivateDefinitions.Add("INWORLD_OVR_LIPSYNC=1");
-
-        AddEngineThirdPartyPrivateStaticDependencies(Target, "zlib");
     }
 }

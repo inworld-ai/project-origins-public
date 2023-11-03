@@ -24,6 +24,9 @@
 #include "OVRLipSyncContextWrapper.h"
 #include "OVRLipSyncModule.h"
 
+//@Inworld(Matt): fix plugin path
+#include "Interfaces/IPluginManager.h"
+
 #include <Core.h>
 #include <algorithm>
 
@@ -31,9 +34,12 @@ UOVRLipSyncContextWrapper::UOVRLipSyncContextWrapper(ovrLipSyncContextProvider P
 													 int BufferSize, FString ModelPath, bool EnableAcceleration)
 {
 #if !PLATFORM_ANDROID
-	auto pluginsDir = FPaths::ProjectPluginsDir();
-	auto libDir = FPaths::Combine(pluginsDir, TEXT("OVRLipSync"), TEXT("ThirdParty"), TEXT("Lib"),
+	//@Inworld(Artem): fixed plugins dir
+	TSharedPtr<IPlugin> OVRLipSyncPlugin = IPluginManager::Get().FindPlugin("OVRLipSync");
+	auto pluginDir = OVRLipSyncPlugin->GetBaseDir();
+	auto libDir = FPaths::Combine(pluginDir, TEXT("ThirdParty"), TEXT("Lib"),
 								  FPlatformProcess::GetBinariesSubdirectory());
+	UE_LOG(LogOvrLipSync, Error, TEXT("Dir: %s"), *libDir);
 	TArray<char> libDirChar(libDir.GetCharArray());
 	auto rc = ovrLipSync_InitializeEx(SampleRate, BufferSize, libDirChar.GetData());
 #else

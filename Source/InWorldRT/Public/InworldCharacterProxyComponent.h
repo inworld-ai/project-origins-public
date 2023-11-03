@@ -7,20 +7,20 @@
 #include "InworldCharacterProxyComponent.generated.h"
 
 
-UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
+UCLASS(ClassGroup = (Origins), meta = (BlueprintSpawnableComponent))
 class INWORLDRT_API UInworldCharacterProxyComponent : public UInworldCharacterComponent
 {
 	GENERATED_BODY()
 
 public:
-	virtual void SetAgentId(const FName& InAgentId) override;
-	virtual void SetGivenName(const FString& InGivenName) override;
+	virtual void Possess(const FInworldAgentInfo& AgentInfo) override;
+	virtual void Unpossess() override;
 
 protected:
-	virtual void HandlePacket(TSharedPtr<Inworld::FInworldPacket> Packet) override;
-	virtual void HandlePlayerTalking(const Inworld::FTextEvent& Event) override;
-	virtual void HandlePlayerInteraction(bool bInteracting) override;
+	virtual void HandlePacket(TSharedPtr<FInworldPacket> Packet) override;
+	virtual bool StartPlayerInteraction(UInworldPlayerComponent* Player) override;
+	virtual bool StopPlayerInteraction(UInworldPlayerComponent* Player) override;
 
-private:
+public:
 	class AInworldCharacterProxy* GetOwnerAsInworldCharacterProxy() const;
 };

@@ -1,83 +1,124 @@
-/**
- * Copyright 2022 Theai, Inc. (DBA Inworld)
- *
- * Use of this source code is governed by the Inworld.ai Software Development Kit License Agreement
- * that can be found in the LICENSE.md file or at https://www.inworld.ai/sdk-license
- */
+// Copyright 2023 Theai, Inc. (DBA Inworld) All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Packets.h"
 #include "InworldCharacterMessage.h"
-#include "InworldCharacterEnums.h"
+#include "InworldEnums.h"
 
 #include "InworldCharacterPlayback.generated.h"
 
 class UInworldCharacterComponent;
 
 UCLASS(BlueprintType, Blueprintable, Abstract)
-class INWORLDAIINTEGRATION_API UInworldCharacterPlayback : public UObject, public Inworld::FCharacterMessageVisitor
+class INWORLDAIINTEGRATION_API UInworldCharacterPlayback : public UObject
 {
 	GENERATED_BODY()
 
 public:
 	/**
-	 * Handle message from player(interrupt audio, update history etc)
-	 * @param text event
-	 */
-	virtual void HandlePlayerTalking(const Inworld::FCharacterMessageUtterance& Message) {}
-	
-	/**
-	 * Handle start/stop interacting with player
-	 * @param Interaction state
-	 */
-	virtual void HandlePlayerInteraction(bool bInteracting) {}
-
-	/**
-	 * Update playback
-	 * @return is playback ready to handle next message
-	 */
-	virtual bool Update() { return true; }
-
-	/**
-	 * Handle character emotion change
-	 */
-	virtual void HandleEmotionChange(EInworldCharacterEmotionalBehavior Emotion, EInworldCharacterEmotionStrength Strength) { }
-
-	/**
 	 * Use for initializing
 	 */
-	UFUNCTION(BlueprintNativeEvent)
+	UFUNCTION(BlueprintNativeEvent, Category = "Playback")
 	void BeginPlay();
 
 	/**
 	 * Use for deinitializing
 	 */
-	UFUNCTION(BlueprintNativeEvent)
+	UFUNCTION(BlueprintNativeEvent, Category = "Playback")
 	void EndPlay();
 
-	void HandleMessage(const TSharedPtr<Inworld::FCharacterMessage>& Message);
+	/**
+	 * Use for updating
+	 */
+	UFUNCTION(BlueprintNativeEvent)
+	void Tick(float DeltaTime);
 
-	void SetOwnerActor(AActor* InOwnerActor) { OwnerActor = InOwnerActor; }
-	void SetCharacterComponent(UInworldCharacterComponent* InCharacterComponent);
+	/**
+	 * Event for when Character has changed interaction states
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "Playback|Interaction")
+	void OnCharacterInteractionState(bool bInteracting);
+
+	/**
+	 * Event for when Character has been talked to by the player
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "Playback|Interaction")
+	void OnCharacterPlayerTalk(const FCharacterMessagePlayerTalk& Message);
+
+	/**
+	 * Event for when Character has changed emotions
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "Playback|Emotion")
+	void OnCharacterEmotion(EInworldCharacterEmotionalBehavior Emotion, EInworldCharacterEmotionStrength Strength);
+
+	/**
+	 * Event for when Character has uttered
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "Playback|Utterance")
+	void OnCharacterUtterance(const FCharacterMessageUtterance& Message);
+
+	/**
+	 * Event for when Character is interrupted while uttering
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "Playback|Utterance")
+	void OnCharacterUtteranceInterrupt(const FCharacterMessageUtterance& Message);
+
+	/**
+	 * Event for when Character is silenced
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "Playback|Silence")
+	void OnCharacterSilence(const FCharacterMessageSilence& Message);
+
+	/**
+	 * Event for when Character is interrupted while silenced
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "Playback|Silence")
+	void OnCharacterSilenceInterrupt(const FCharacterMessageSilence& Message);
+
+	/**
+	 * Event for when Character has a trigger
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "Playback|Trigger")
+	void OnCharacterTrigger(const FCharacterMessageTrigger& Message);
+
+	/**
+	 * Event for when Character interaction ends
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "Playback|Interaction")
+	void OnCharacterInteractionEnd(const FCharacterMessageInteractionEnd& Message);
+
+	/**
+	 * Locks the Character's message queue
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Message Queue")
+	void LockMessageQueue();
+
+	/**
+	 * Unlocks the Character's message queue
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Message Queue")
+	void UnlockMessageQueue();
+
+	void SetCharacterComponent(class UInworldCharacterComponent* InCharacterComponent);
+	void ClearCharacterComponent();
 
 protected:
 
-	UFUNCTION(BlueprintPure)
-	const UInworldCharacterComponent* GetCharacterComponent() const 
-	{ 
+	UFUNCTION(BlueprintPure, Category = "Inworld")
+	const UInworldCharacterComponent* GetCharacterComponent() const
+	{
 		return CharacterComponent.Get();
-	};
+	}
 
-	UFUNCTION(BlueprintPure)
+	UFUNCTION(BlueprintPure, Category = "Inworld")
 	const AActor* GetOwner() const
 	{
 		return OwnerActor.Get();
-	};
-
-	const TSharedPtr<Inworld::FCharacterMessage> GetCurrentMessage() const;
+	}
 
 	TWeakObjectPtr<AActor> OwnerActor;
-	TWeakObjectPtr<UInworldCharacterComponent> CharacterComponent;
+	TWeakObjectPtr<class UInworldCharacterComponent> CharacterComponent;
+
+	FInworldCharacterMessageQueueLockHandle CharacterMessageQueueLockHandle;
 };

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "InworldTypes.h"
 #include "InworldCharacterProxy.generated.h"
 
 UCLASS()
@@ -20,16 +21,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inworld")
 	void DisableManagedActors();
 
+	void SetBestInworldCharacterComponent(class UInworldCharacterComponent* InworldCharacterComponent);
+
 	class UInworldCharacterComponent* GetBestInworldCharacterComponent() const { return MostRecentInworldCharacterComponent.Get(); }
 
-	void SetAgentId(const FName& InAgentId);
-	void SetGivenName(const FString& InGivenName);
+	void Possess(const FInworldAgentInfo& AgentInfo);
+	void Unpossess();
+
+	const TArray<class UInworldCharacterComponent*>& GetManagedCharacterComponents() const { return RegisteredCharacterComponents; }
 
 private:
-	UFUNCTION()
-	void OnPlayerInteractionStateChanged(bool bIsInteracting);
 
-public:
+	void RegisterProxyCharacterComponent(UInworldCharacterComponent* Character) { RegisteredCharacterComponents.AddUnique(Character); }
+	void UnregisterProxyCharacterComponent(UInworldCharacterComponent* Character) { RegisteredCharacterComponents.Remove(Character); }
+
+protected:
 	UPROPERTY(EditAnywhere, Category = "Proxy")
 	class UInworldCharacterProxyComponent* CharacterProxyComponent;
 
@@ -44,5 +50,8 @@ public:
 
 	UPROPERTY()
 	TWeakObjectPtr<class UInworldCharacterComponent> MostRecentInworldCharacterComponent;
+
+	UPROPERTY()
+	TArray<class UInworldCharacterComponent*> RegisteredCharacterComponents;
 
 };

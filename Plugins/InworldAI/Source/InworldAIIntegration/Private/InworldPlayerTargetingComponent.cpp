@@ -1,16 +1,8 @@
-/**
- * Copyright 2022 Theai, Inc. (DBA Inworld)
- *
- * Use of this source code is governed by the Inworld.ai Software Development Kit License Agreement
- * that can be found in the LICENSE.md file or at https://www.inworld.ai/sdk-license
- */
-
+// Copyright 2023 Theai, Inc. (DBA Inworld) All Rights Reserved.
 
 #include "InworldPlayerTargetingComponent.h"
-#include "Camera/CameraComponent.h"
 #include "InworldPlayerComponent.h"
-#include "InworldCharacterComponent.h"
-#include "InworldApi.h"
+#include "Camera/CameraComponent.h"
 
 
 UInworldPlayerTargetingComponent::UInworldPlayerTargetingComponent()
@@ -22,73 +14,49 @@ void UInworldPlayerTargetingComponent::BeginPlay()
 {
     Super::BeginPlay();
 
-    InworldSubsystem = GetWorld()->GetSubsystem<UInworldApiSubsystem>();
-    PlayerComponent = Cast<UInworldPlayerComponent>(GetOwner()->GetComponentByClass(UInworldPlayerComponent::StaticClass()));
+    if (GetOwnerRole() != ROLE_Authority)
+    {
+        PrimaryComponentTick.SetTickFunctionEnable(false);
+    }
+    else
+	{
+		PrimaryComponentTick.SetTickFunctionEnable(true);
+
+        InworldSubsystem = GetWorld()->GetSubsystem<UInworldApiSubsystem>();
+        PlayerComponent = Cast<UInworldPlayerComponent>(GetOwner()->GetComponentByClass(UInworldPlayerComponent::StaticClass()));
+    }
 }
 
 void UInworldPlayerTargetingComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	UpdateTargetCharacter();
+    UpdateTargetCharacter();
 }
 
-void UInworldPlayerTargetingComponent::SetPermanentTargetCharacter(UInworldCharacterComponent* Character)
-{
-    UnsetPermanentTargetCharacter(Character);
-    PermanentTargetCharacterPriorityList.Add(Character);
-}
-
-void UInworldPlayerTargetingComponent::UnsetPermanentTargetCharacter(UInworldCharacterComponent* Character)
-{
-    PermanentTargetCharacterPriorityList.Remove(Character);
-}
-
-UInworldCharacterComponent* UInworldPlayerTargetingComponent::GetFocusTargetCharacter() const
+void UInworldPlayerTargetingComponent::UpdateTargetCharacter()
 {
     const auto& CharacterComponents = InworldSubsystem->GetCharacterComponents();
     TWeakObjectPtr<UInworldCharacterComponent> ClosestCharacter;
     const float MinDistSq = InteractionDistance * InteractionDistance;
-    const float AltMinDistSq = AltInteractionDistance * AltInteractionDistance;
-    float AltCurMaxDot = -1.f;
     float CurMaxDot = -1.f;
     const FVector Location = GetOwner()->GetActorLocation();
-    const FVector Forward = GetOwner()->GetActorForwardVector();
-
-    if (Location == FVector::ZeroVector)
-    {
-        return nullptr;
-    }
-
     for (auto& Character : CharacterComponents)
     {
-        if (!Character)
+        if (!Character || Character->GetAgentId().IsEmpty())
         {
             continue;
         }
 
-        auto CandidateCharacter = static_cast<UInworldCharacterComponent*>(Character);
-        const FVector CharacterLocation = CandidateCharacter->GetComponentOwner()->GetActorLocation();
-        const FVector CharacterForward = CandidateCharacter->GetComponentOwner()->GetActorForwardVector();
-
-        FVector ToOwner = Location - CharacterLocation;
-        ToOwner.Normalize();
-        const float ToOwnerFoV = (180.f) / PI * FMath::Acos(FVector::DotProduct(ToOwner, CharacterForward));
-        if (ToOwnerFoV <= -90.f || ToOwnerFoV >= 90.f)
+        Inworld::IPlayerComponent* CurrentInteractonPlayer = Character->GetTargetPlayer();
+        if (CurrentInteractonPlayer && CurrentInteractonPlayer != PlayerComponent.Get())
         {
             continue;
         }
 
-        FVector ToCharacter = CharacterLocation - Location;
-        ToCharacter.Normalize();
-        const float ToCharacterFoV = (180.f) / PI * FMath::Acos(FVector::DotProduct(ToCharacter, Forward));
-        if (ToCharacterFoV <= -90.f || ToCharacterFoV >= 90.f)
-        {
-            continue;
-        }
-
+        const FVector CharacterLocation = Character->GetComponentOwner()->GetActorLocation();
         const float DistSq = FVector::DistSquared(Location, CharacterLocation);
-        if (DistSq > (CandidateCharacter->bIsMainCharacter ? MinDistSq : AltMinDistSq))
+        if (DistSq > MinDistSq)
         {
             continue;
         }
@@ -105,77 +73,28 @@ UInworldCharacterComponent* UInworldPlayerTargetingComponent::GetFocusTargetChar
         }
 
         const float Dot = FVector2D::DotProduct(Forward2D, Direction2D);
-
-        const float InteractionDotThreshold = CandidateCharacter == PlayerComponent->GetTargetCharacter() ? MaintainInteractionDotThreshold : BeginInteractionDotThreshold;
-        const float AltInteractionDotThreshold = CandidateCharacter == PlayerComponent->GetTargetCharacter() ? AltMaintainInteractionDotThreshold : AltBeginInteractionDotThreshold;
-
-        if (Dot < (CandidateCharacter->bIsMainCharacter ? InteractionDotThreshold : AltInteractionDotThreshold))
+        if (Dot < InteractionDotThreshold)
         {
             continue;
         }
 
-        if (CandidateCharacter->bIsMainCharacter && Dot < CurMaxDot)
-        {
-            if (Dot < CurMaxDot)
-            {
-                continue;
-            }
-            CurMaxDot = Dot;
-        }
-
-        if (!CandidateCharacter->bIsMainCharacter)
-        {
-            if (Dot < AltCurMaxDot)
-            {
-                continue;
-            }
-            AltCurMaxDot = Dot;
-        }
-
-        if (!CandidateCharacter->bIsMainCharacter && ClosestCharacter.IsValid() && ClosestCharacter->bIsMainCharacter)
+        if (Dot < CurMaxDot)
         {
             continue;
         }
 
-        ClosestCharacter = CandidateCharacter;
+        ClosestCharacter = static_cast<UInworldCharacterComponent*>(Character);
+        CurMaxDot = Dot;
     }
 
-    return ClosestCharacter.Get();
-}
-
-UInworldCharacterComponent* UInworldPlayerTargetingComponent::GetPermanentTargetCharacter() const
-{
-    return PermanentTargetCharacterPriorityList.Num() > 0 ? PermanentTargetCharacterPriorityList.Last().Get() : nullptr;
-}
-
-void UInworldPlayerTargetingComponent::UpdateTargetCharacter()
-{
-    TWeakObjectPtr<UInworldCharacterComponent> PreviousFocusTargetCharacter = FocusTargetCharacter.Get();
-
-    FocusTargetCharacter = GetFocusTargetCharacter();
-    if (PreviousFocusTargetCharacter != FocusTargetCharacter)
-    {
-        OnFocusTargetCharacterChanged.Broadcast(FocusTargetCharacter.Get());
-    }
-
-    TWeakObjectPtr<UInworldCharacterComponent> PreviousPermanentTargetCharacter = PermanentTargetCharacter.Get();
-
-    PermanentTargetCharacter = GetPermanentTargetCharacter();
-    if (PreviousPermanentTargetCharacter != PermanentTargetCharacter)
-    {
-        OnPermanentTargetCharacterChanged.Broadcast(PermanentTargetCharacter.Get());
-    }
-
-    TWeakObjectPtr<UInworldCharacterComponent> TargetCharacter = PermanentTargetCharacter.IsValid() ? PermanentTargetCharacter : FocusTargetCharacter;
-
-    if (PlayerComponent->GetTargetCharacter() && (!TargetCharacter.IsValid() || PlayerComponent->GetTargetCharacter() != TargetCharacter.Get()))
+    if (PlayerComponent->GetTargetCharacter() && (!ClosestCharacter.IsValid() || PlayerComponent->GetTargetCharacter() != ClosestCharacter.Get()))
     {
         ClearTargetCharacter();
     }
 
-    if (TargetCharacter.IsValid() && !PlayerComponent->GetTargetCharacter())
+    if (ClosestCharacter.IsValid() && !PlayerComponent->GetTargetCharacter())
     {
-        SetTargetCharacter(TargetCharacter);
+        SetTargetCharacter(ClosestCharacter);
     }
 }
 
@@ -183,7 +102,7 @@ void UInworldPlayerTargetingComponent::SetTargetCharacter(TWeakObjectPtr<UInworl
 {
     if (ChangeTargetCharacterTimer.CheckPeriod(GetWorld()))
     {
-        PlayerComponent->SetTargetCharacter(Character.Get());
+        PlayerComponent->SetTargetInworldCharacter(Character.Get());
     }
 }
 
@@ -191,7 +110,7 @@ void UInworldPlayerTargetingComponent::ClearTargetCharacter()
 {
     if (PlayerComponent->GetTargetCharacter() && ChangeTargetCharacterTimer.CheckPeriod(GetWorld()))
     {
-        PlayerComponent->ClearTargetCharacter();
+        PlayerComponent->ClearTargetInworldCharacter();
     }
 }
 

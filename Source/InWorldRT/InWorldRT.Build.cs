@@ -14,13 +14,16 @@ public class InWorldRT : ModuleRules
 			"Engine",
 			"InputCore",
 			"InworldAIIntegration",
-			"InworldAIClient" ,
+			"InworldAIClient",
+			"InworldAINdk",
 			"AudioMixer",
 			"AudioCaptureCore"
 		});
 
 		PrivateDependencyModuleNames.Add("AudioCaptureRtAudio");
 
-		PrivateDefinitions.Add("INWORLD_OVR_LIPSYNC=1");
+        PublicDependencyModuleNames.Add("OVRLipSync");
+
+        PrivateDefinitions.Add("INWORLD_OVR_LIPSYNC=1");
 	}
 }

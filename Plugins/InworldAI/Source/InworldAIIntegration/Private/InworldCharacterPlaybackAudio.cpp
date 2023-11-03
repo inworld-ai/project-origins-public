@@ -1,24 +1,21 @@
-/**
- * Copyright 2022 Theai, Inc. (DBA Inworld)
- *
- * Use of this source code is governed by the Inworld.ai Software Development Kit License Agreement
- * that can be found in the LICENSE.md file or at https://www.inworld.ai/sdk-license
- */
+// Copyright 2023 Theai, Inc. (DBA Inworld) All Rights Reserved.
+
+// to avoid compile errors in windows unity build
+#undef PlaySound
 
 #include "InworldCharacterPlaybackAudio.h"
-#include "InworldUtils.h"
+#include "InworldCharacterComponent.h"
+#include "InworldBlueprintFunctionLibrary.h"
+#include "InworldAudioComponent.h"
 #include <Components/AudioComponent.h>
 
 void UInworldCharacterPlaybackAudio::BeginPlay_Implementation()
 {
 	Super::BeginPlay_Implementation();
 
-	auto AudioComponents = OwnerActor->GetComponentsByTag(UAudioComponent::StaticClass(), TEXT("Voice"));
-	if (AudioComponents.Num() != 0)
-	{
-		AudioComponent = Cast<UAudioComponent>(AudioComponents[0]);
-	}
-	else
+	AudioComponent = Cast<UInworldAudioComponent>(OwnerActor->GetComponentByClass(UInworldAudioComponent::StaticClass()));
+
+	if (AudioComponent == nullptr)
 	{
 		AudioComponent = Cast<UAudioComponent>(OwnerActor->GetComponentByClass(UAudioComponent::StaticClass()));
 	}
@@ -26,82 +23,78 @@ void UInworldCharacterPlaybackAudio::BeginPlay_Implementation()
 	if (ensureMsgf(AudioComponent.IsValid(), TEXT("UInworldCharacterPlaybackAudio owner doesn't contain AudioComponent")))
 	{
 		AudioPlaybackPercentHandle = AudioComponent->OnAudioPlaybackPercentNative.AddUObject(this, &UInworldCharacterPlaybackAudio::OnAudioPlaybackPercent);
+		AudioFinishedHandle = AudioComponent->OnAudioFinishedNative.AddUObject(this, &UInworldCharacterPlaybackAudio::OnAudioFinished);
 	}
 }
 
 void UInworldCharacterPlaybackAudio::EndPlay_Implementation()
 {
+	Super::EndPlay_Implementation();
+
 	if (AudioComponent.IsValid())
 	{
 		AudioComponent->OnAudioPlaybackPercentNative.Remove(AudioPlaybackPercentHandle);
+		AudioComponent->OnAudioFinishedNative.Remove(AudioFinishedHandle);
 	}
-
-	Super::EndPlay_Implementation();
 }
 
-bool UInworldCharacterPlaybackAudio::Update()
+void UInworldCharacterPlaybackAudio::OnCharacterUtterance_Implementation(const FCharacterMessageUtterance& Message)
 {
-	EState CurState = EState::Idle;
-	if (!SilenceTimer.IsExpired(OwnerActor->GetWorld()))
+	SoundWave = nullptr;
+	CurrentAudioPlaybackPercent = 0.f;
+	SoundDuration = 0.f;
+	if (Message.SoundData.Num() > 0 && Message.bAudioFinal)
 	{
-		CurState = EState::Silence;
-	}
-	else if (AudioComponent->IsPlaying())
-	{
-		CurState = EState::Audio;
-	}
+		SoundWave = UInworldBlueprintFunctionLibrary::DataArrayToSoundWave(Message.SoundData);
+		SoundDuration = SoundWave->GetDuration();
+		AudioComponent->SetSound(SoundWave);
 
-	if (CurState == EState::Idle)
-	{
-		if (State == EState::Audio)
+		VisemeInfoPlayback.Empty();
+		VisemeInfoPlayback.Reserve(Message.VisemeInfos.Num());
+
+		CurrentVisemeInfo = FCharacterUtteranceVisemeInfo();
+		PreviousVisemeInfo = FCharacterUtteranceVisemeInfo();
+		for (const auto& VisemeInfo : Message.VisemeInfos)
 		{
-			OnUtteranceStopped.Broadcast();
+			if (!VisemeInfo.Code.IsEmpty())
+			{
+				VisemeInfoPlayback.Add(VisemeInfo);
+			}
 		}
-		else if (State == EState::Silence)
-		{
-			OnSilenceStopped.Broadcast();
-		}
+
+		AudioComponent->Play();
+
+		LockMessageQueue();
 	}
-
-	State = CurState;
-
-	return State == EState::Idle;
+	OnUtteranceStarted.Broadcast(SoundWave != nullptr ? SoundDuration : 0.f, Message.Text);
 }
 
-void UInworldCharacterPlaybackAudio::Visit(const Inworld::FCharacterMessageUtterance& Event)
+void UInworldCharacterPlaybackAudio::OnCharacterUtteranceInterrupt_Implementation(const FCharacterMessageUtterance& Message)
 {
-	if (!ensure(State == EState::Idle))
-	{
-		return;
-	}
-
-	float Duration = 0.f;
-	if (!Event.AudioData.empty())
-	{
-		USoundWave* SoundWave = Inworld::Utils::StringToSoundWave(Event.AudioData);
-		if (ensure(SoundWave))
-		{
-			SoundWave->SourceEffectChain = EffectSourcePresetChain;
-			AudioComponent->SetVolumeMultiplier(VolumeMultiplier);
-			AudioComponent->SetSound(SoundWave);
-			State = EState::Audio;
-			PlayAudio(SoundWave, Event.AudioData);
-			Duration = SoundWave->GetDuration();
-			OnCharacterInteraction.Broadcast(Event.Text, Duration);
-		}
-	}
-	OnUtteranceStarted.Broadcast(Duration, Event.CustomGesture);
+	AudioComponent->Stop();
+	VisemeBlends = FInworldCharacterVisemeBlends();
+	OnVisemeBlendsUpdated.Broadcast(VisemeBlends);
+	OnUtteranceInterrupted.Broadcast();
 }
 
-void UInworldCharacterPlaybackAudio::Visit(const Inworld::FCharacterMessageSilence& Event)
+void UInworldCharacterPlaybackAudio::OnCharacterSilence_Implementation(const FCharacterMessageSilence& Message)
 {
-	if (!ensure(State == EState::Idle))
-	{
-		return;
-	}
+	UWorld* World = CharacterComponent->GetWorld();
+	World->GetTimerManager().SetTimer(SilenceTimerHandle, this, &UInworldCharacterPlaybackAudio::OnSilenceEnd, Message.Duration);
+	OnSilenceStarted.Broadcast(Message.Duration);
+	LockMessageQueue();
+}
 
-	SilenceTimer.SetOneTime(OwnerActor->GetWorld(), Event.Duration);
-	OnSilenceStarted.Broadcast(Event.Duration);
+void UInworldCharacterPlaybackAudio::OnCharacterSilenceInterrupt_Implementation(const FCharacterMessageSilence& Message)
+{
+	UWorld* World = CharacterComponent->GetWorld();
+	World->GetTimerManager().ClearTimer(SilenceTimerHandle);
+}
+
+void UInworldCharacterPlaybackAudio::OnSilenceEnd()
+{
+	OnSilenceStopped.Broadcast();
+	UnlockMessageQueue();
 }
 
 float UInworldCharacterPlaybackAudio::GetRemainingTimeForCurrentUtterance() const
@@ -114,22 +107,66 @@ float UInworldCharacterPlaybackAudio::GetRemainingTimeForCurrentUtterance() cons
 	return (1.f - CurrentAudioPlaybackPercent) * AudioComponent->Sound->Duration;
 }
 
-void UInworldCharacterPlaybackAudio::HandlePlayerTalking(const Inworld::FCharacterMessageUtterance& Message)
-{
-	auto CurrentMessage = GetCurrentMessage();
-	if (CurrentMessage && CurrentMessage->InteractionId != Message.InteractionId && AudioComponent->IsPlaying())
-	{
-		AudioComponent->Stop();
-		OnUtteranceInterrupted.Broadcast();
-	}
-}
-
-void UInworldCharacterPlaybackAudio::PlayAudio(USoundWave* SoundWave, const std::string& AudioData)
-{
-	AudioComponent->Play();
-}
-
 void UInworldCharacterPlaybackAudio::OnAudioPlaybackPercent(const UAudioComponent* InAudioComponent, const USoundWave* InSoundWave, float Percent)
 {
 	CurrentAudioPlaybackPercent = Percent;
+
+	VisemeBlends = FInworldCharacterVisemeBlends();
+
+	const float CurrentAudioPlaybackTime = SoundDuration * Percent;
+
+	{
+		const int32 INVALID_INDEX = -1;
+		int32 Target = INVALID_INDEX;
+		int32 L = 0;
+		int32 R = VisemeInfoPlayback.Num() - 1;
+		while (L <= R)
+		{
+			const int32 Mid = (L + R) >> 1;
+			const FCharacterUtteranceVisemeInfo& Sample = VisemeInfoPlayback[Mid];
+			if (CurrentAudioPlaybackTime > Sample.Timestamp)
+			{
+				L = Mid + 1;
+			}
+			else
+			{
+				Target = Mid;
+				R = Mid - 1;
+			}
+		}
+		if (VisemeInfoPlayback.IsValidIndex(Target))
+		{
+			CurrentVisemeInfo = VisemeInfoPlayback[Target];
+		}
+		if (VisemeInfoPlayback.IsValidIndex(Target - 1))
+		{
+			PreviousVisemeInfo = VisemeInfoPlayback[Target - 1];
+		}
+	}
+
+	const float Blend = (CurrentAudioPlaybackTime - PreviousVisemeInfo.Timestamp) / (CurrentVisemeInfo.Timestamp - PreviousVisemeInfo.Timestamp);
+
+	VisemeBlends.STOP = 0.f;
+	*VisemeBlends[PreviousVisemeInfo.Code] = FMath::Clamp(1.f - Blend, 0.f, 1.f);
+	*VisemeBlends[CurrentVisemeInfo.Code] = FMath::Clamp(Blend, 0.f, 1.f);
+
+	OnVisemeBlendsUpdated.Broadcast(VisemeBlends);
+}
+
+void UInworldCharacterPlaybackAudio::OnAudioFinished(UAudioComponent* InAudioComponent)
+{
+	VisemeBlends = FInworldCharacterVisemeBlends();
+	OnVisemeBlendsUpdated.Broadcast(VisemeBlends);
+	OnUtteranceStopped.Broadcast();
+	UnlockMessageQueue();
+}
+
+float* FInworldCharacterVisemeBlends::operator[](const FString& CodeString)
+{
+	FProperty* CodeProperty = StaticStruct()->FindPropertyByName(FName(CodeString));
+	if (CodeProperty)
+	{
+		return CodeProperty->ContainerPtrToValuePtr<float>(this);
+	}
+	return &STOP;
 }

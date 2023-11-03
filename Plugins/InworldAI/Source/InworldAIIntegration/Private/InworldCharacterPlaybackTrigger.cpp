@@ -1,31 +1,27 @@
-/**
- * Copyright 2022 Theai, Inc. (DBA Inworld)
- *
- * Use of this source code is governed by the Inworld.ai Software Development Kit License Agreement
- * that can be found in the LICENSE.md file or at https://www.inworld.ai/sdk-license
- */
+// Copyright 2023 Theai, Inc. (DBA Inworld) All Rights Reserved.
 
 #include "InworldCharacterPlaybackTrigger.h"
 #include "InworldApi.h"
 
-void UInworldCharacterPlaybackTrigger::Visit(const Inworld::FCharacterMessageTrigger& Event)
+#include "InworldCharacterPlaybackTrigger.h"
+#include "InworldApi.h"
+
+void UInworldCharacterPlaybackTrigger::OnCharacterTrigger_Implementation(const FCharacterMessageTrigger& Message)
 {
-	if (FinalizedInteractions.Contains(Event.InteractionId))
-	{
-		OwnerActor->GetWorld()->GetSubsystem<UInworldApiSubsystem>()->NotifyCustomTrigger(Event.Name);
-	}
-	else
-	{
-		PendingTriggers.Add(Event.InteractionId, Event);
-	}
+	Triggers.Add(Message.Name);
 }
 
-void UInworldCharacterPlaybackTrigger::Visit(const Inworld::FCharacterMessageInteractionEnd& Event)
+void UInworldCharacterPlaybackTrigger::OnCharacterInteractionEnd_Implementation(const FCharacterMessageInteractionEnd& Message)
 {
-	if (PendingTriggers.Contains(Event.InteractionId))
+	FlushTriggers();
+}
+
+void UInworldCharacterPlaybackTrigger::FlushTriggers()
+{
+	TArray<FString> TriggersToFlush = Triggers;
+	Triggers = {};
+	for (const FString& Trigger : TriggersToFlush)
 	{
-		OwnerActor->GetWorld()->GetSubsystem<UInworldApiSubsystem>()->NotifyCustomTrigger(PendingTriggers[Event.InteractionId].Name);
-		PendingTriggers.Remove(Event.InteractionId);
+		OwnerActor->GetWorld()->GetSubsystem<UInworldApiSubsystem>()->NotifyCustomTrigger(Trigger);
 	}
-	FinalizedInteractions.Add(Event.InteractionId);
 }

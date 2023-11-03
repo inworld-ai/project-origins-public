@@ -1,35 +1,50 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "0.9.1",
+	"VersionName": "1.4.0",
 	"FriendlyName": "InworldAI",
-	"Description": "InworldAI",
-	"Category": "Other",
+	"Description": "Integrate Characters from https://studio.inworld.ai",
+	"Category": "AI",
 	"CreatedBy": "InworldAI",
+	"CreatedByURL": "https://www.inworld.ai/",
+	"DocsURL": "https://docs.inworld.ai/",
+	"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/product/f2c8fa2e6b7d4212ba5b93cd0b897c4c",
+	"SupportURL": "",
+	"EngineVersion": "5.1.0",
 	"CanContainContent": true,
-	"EnabledByDefault": true,
+	"Installed": true,
 	"Modules": [
 		{
 			"Name": "InworldAIClient",
 			"Type": "Runtime",
 			"LoadingPhase": "Default",
-			"WhitelistPlatforms": [
+			"PlatformAllowList": [
 				"Win64"
 			]
 		},
 		{
 			"Name": "InworldAIIntegration",
 			"Type": "Runtime",
-			"LoadingPhase": "Default",
-			"WhitelistPlatforms": [
+			"LoadingPhase": "PreDefault",
+			"PlatformAllowList": [
 				"Win64"
 			]
-		}
-	],
-	"Plugins": [
+		},
 		{
-			"Name": "AudioCapture",
-			"Enabled": true
+			"Name": "InworldAIPlatform",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64"
+			]
+		},
+		{
+			"Name": "InworldAIEditor",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit",
+			"PlatformAllowList": [
+				"Win64"
+			]
 		}
 	]
 }

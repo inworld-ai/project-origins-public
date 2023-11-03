@@ -1,14 +1,10 @@
-/**
- * Copyright 2022 Theai, Inc. (DBA Inworld)
- *
- * Use of this source code is governed by the Inworld.ai Software Development Kit License Agreement
- * that can be found in the LICENSE.md file or at https://www.inworld.ai/sdk-license
- */
+// Copyright 2023 Theai, Inc. (DBA Inworld) All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "InworldCharacterEnums.h"
+
+#include "InworldEnums.h"
 #include <Engine/DataTable.h>
 #include <Kismet/BlueprintFunctionLibrary.h>
 
@@ -21,7 +17,7 @@ struct INWORLDAIINTEGRATION_API FInworldAnimationTableRow : public FTableRowBase
 
 public:
 	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, Category = "Animation", DisplayName = "Emotion")
-	EInworldCharacterEmotionalBehavior Key;
+	EInworldCharacterEmotionalBehavior Key = EInworldCharacterEmotionalBehavior::NEUTRAL;
 
 	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, Category = "Animation")
 	EInworldCharacterEmotionStrength Strength = EInworldCharacterEmotionStrength::UNSPECIFIED;

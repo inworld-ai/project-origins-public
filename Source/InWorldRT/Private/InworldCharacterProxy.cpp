@@ -13,6 +13,11 @@ AInworldCharacterProxy::AInworldCharacterProxy()
 	CharacterProxyComponent = CreateDefaultSubobject<UInworldCharacterProxyComponent>(TEXT("ProxyCharacterComponent"));
 }
 
+void AInworldCharacterProxy::SetBestInworldCharacterComponent(class UInworldCharacterComponent* InworldCharacterComponent)
+{
+	MostRecentInworldCharacterComponent = InworldCharacterComponent;
+}
+
 void AInworldCharacterProxy::EnableManagedActors()
 {
 	auto* InworldSubsystem = GetWorld()->GetSubsystem<UInworldApiSubsystem>();
@@ -30,13 +35,10 @@ void AInworldCharacterProxy::EnableManagedActors()
 		if (InworldCharacterComponent)
 		{
 			ManagedInworldCharacterComponents.Add(InworldCharacterComponent);
-			InworldCharacterComponent->OnPlayerInteractionStateChanged.AddDynamic(this, &AInworldCharacterProxy::OnPlayerInteractionStateChanged);
 
 			if (InworldCharacterComponent->GetBrainName().IsEmpty())
 			{
-				InworldCharacterComponent->SetBrainName(ProxyBrainName);
-				InworldCharacterComponent->Register();
-				InworldCharacterComponent->SetBrainName(FString());
+				RegisterProxyCharacterComponent(InworldCharacterComponent);
 			}
 		}
 	}
@@ -61,68 +63,29 @@ void AInworldCharacterProxy::DisableManagedActors()
 		if (InworldCharacterComponent)
 		{
 			ManagedInworldCharacterComponents.Remove(InworldCharacterComponent);
-			InworldCharacterComponent->OnPlayerInteractionStateChanged.RemoveDynamic(this, &AInworldCharacterProxy::OnPlayerInteractionStateChanged);
 
 			if (InworldCharacterComponent->GetBrainName().IsEmpty())
 			{
-				InworldCharacterComponent->SetBrainName(ProxyBrainName);
-				InworldCharacterComponent->Unregister();
-				InworldCharacterComponent->SetBrainName(FString());
+				UnregisterProxyCharacterComponent(InworldCharacterComponent);
 			}
 		}
 	}
 	CharacterProxyComponent->SetBrainName(ProxyBrainName);
 	CharacterProxyComponent->Unregister();
-
-	SetAgentId(FName());
-	SetGivenName(FString());
 }
 
-void AInworldCharacterProxy::SetAgentId(const FName& InAgentId)
+void AInworldCharacterProxy::Possess(const FInworldAgentInfo& AgentInfo)
 {
 	for (auto Character : ManagedInworldCharacterComponents)
 	{
-		Character->SetAgentId(InAgentId);
+		Character->Possess(AgentInfo);
 	}
 }
 
-void AInworldCharacterProxy::SetGivenName(const FString& InGivenName)
+void AInworldCharacterProxy::Unpossess()
 {
 	for (auto Character : ManagedInworldCharacterComponents)
 	{
-		Character->SetGivenName(InGivenName);
-	}
-}
-
-void AInworldCharacterProxy::OnPlayerInteractionStateChanged(bool bIsInteracting)
-{
-	APlayerController* PlayerController = GetWorld()->GetFirstPlayerController<APlayerController>();
-	if (!PlayerController)
-	{
-		return;
-	}
-
-	APawn* PlayerPawn = PlayerController->GetPawn<APawn>();
-	if (!PlayerPawn)
-	{
-		return;
-	}
-
-	UInworldPlayerComponent* InworldPlayerComponent = Cast<UInworldPlayerComponent>(PlayerPawn->GetComponentByClass(UInworldPlayerComponent::StaticClass()));
-	if (!InworldPlayerComponent)
-	{
-		return;
-	}
-
-	UInworldCharacterComponent* InteractingCharacterComponent = static_cast<UInworldCharacterComponent*>(InworldPlayerComponent->GetTargetCharacter());
-
-	if (bIsInteracting && ManagedInworldCharacterComponents.Contains(InteractingCharacterComponent))
-	{
-		UInworldCharacterComponent* PreviousComponent = MostRecentInworldCharacterComponent.Get();
-		if (PreviousComponent)
-		{
-			PreviousComponent->CancelCurrentInteraction();
-		}
-		MostRecentInworldCharacterComponent = InteractingCharacterComponent;
+		Character->Unpossess();
 	}
 }

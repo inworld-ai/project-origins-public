@@ -18,7 +18,7 @@ void UOriginInteractionWatcher::BeginWatch(UInworldCharacterComponent* Character
 	WatchedCharacter = CharacterToStartWatching;
 
 	UInworldCharacterPlaybackHistory* History = Cast<UInworldCharacterPlaybackHistory>(WatchedCharacter->GetPlayback(UInworldCharacterPlaybackHistory::StaticClass()));
-	History->OnInteractionsChanged.AddDynamic(this, &UOriginInteractionWatcher::OnWatchedCharacterInteractionsChanged);
+	if(History) History->OnInteractionsChanged.AddDynamic(this, &UOriginInteractionWatcher::OnWatchedCharacterInteractionsChanged);
 }
 
 void UOriginInteractionWatcher::EndWatch()
@@ -41,9 +41,9 @@ void UOriginInteractionWatcher::OnWatchedCharacterInteractionsChanged(const TArr
 	for (int32 i = NumProcessedInteractions; i < Interactions.Num(); ++i)
 	{
 		const FInworldCharacterInteraction& Interaction = Interactions[i];
-		if (Interaction.Message.bTextFinal)
+		if (Interaction.bTextFinal)
 		{
-			OnOriginInteraction.Broadcast(WatchedCharacter.Get(), Interaction.bPlayerInteraction, Interaction.Message.InteractionId, Interaction.Message.Text);
+			OnOriginInteraction.Broadcast(WatchedCharacter.Get(), Interaction.bPlayerInteraction, Interaction.InteractionId, Interaction.Text);
 			NumProcessedInteractions = i + 1;
 		}
 		else

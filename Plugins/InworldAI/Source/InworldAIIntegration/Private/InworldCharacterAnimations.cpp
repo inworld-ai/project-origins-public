@@ -1,18 +1,15 @@
-/**
- * Copyright 2022 Theai, Inc. (DBA Inworld)
- *
- * Use of this source code is governed by the Inworld.ai Software Development Kit License Agreement
- * that can be found in the LICENSE.md file or at https://www.inworld.ai/sdk-license
- */
+// Copyright 2023 Theai, Inc. (DBA Inworld) All Rights Reserved.
 #include "InworldCharacterAnimations.h"
-#include "InworldUtils.h"
+#include "Animation/AnimMontage.h"
+
+#include "InworldAIIntegrationModule.h"
 
 template<class TKey, class TDataTable>
 UAnimMontage* GetMontageByKey(TKey Key, float UtteranceDuration, const UDataTable* DataTable, bool bAllowTrailingGestures, EInworldCharacterEmotionStrength EmotionStrength, TArray<UAnimMontage*>& Montages)
 {
 	if (!ensure(DataTable))
 	{
-		Inworld::Utils::ErrorLog("Setup animation data table!");
+		UE_LOG(LogInworldAIIntegration, Error, TEXT("Setup animation data table!"));
 		return nullptr;
 	}
 

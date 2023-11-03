@@ -1,18 +1,67 @@
-/**
- * Copyright 2022 Theai, Inc. (DBA Inworld)
- *
- * Use of this source code is governed by the Inworld.ai Software Development Kit License Agreement
- * that can be found in the LICENSE.md file or at https://www.inworld.ai/sdk-license
- */
+// Copyright 2023 Theai, Inc. (DBA Inworld) All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "InworldUtils.h"
 #include "Components/AudioComponent.h"
 #include "InworldCharacterPlayback.h"
 
 #include "InworldCharacterPlaybackAudio.generated.h"
+
+USTRUCT(BlueprintType)
+struct INWORLDAIINTEGRATION_API FInworldCharacterVisemeBlends
+{
+	GENERATED_BODY()
+
+public:
+	float* operator[](const FString& Code);
+
+public:
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float PP = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float FF = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float TH = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float DD = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float Kk = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float CH = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float SS = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float Nn = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float RR = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float Aa = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float E = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float I = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float O = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float U = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, meta = (ClampMin = 0.f, ClampMax = 1.f), Category = "Viseme")
+	float STOP = 1.f;
+};
 
 UCLASS(BlueprintType, Blueprintable)
 class INWORLDAIINTEGRATION_API UInworldCharacterPlaybackAudio : public UInworldCharacterPlayback
@@ -20,10 +69,6 @@ class INWORLDAIINTEGRATION_API UInworldCharacterPlaybackAudio : public UInworldC
 	GENERATED_BODY()
 
 public:
-	DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInworldCharacterInteraction, FString, Text, float, Duration);
-	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers")
-	FOnInworldCharacterInteraction OnCharacterInteraction;
-
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInworldCharacterUtteranceStarted, float, Duration, FString,  CustomGesture);
 	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers")
 	FOnInworldCharacterUtteranceStarted OnUtteranceStarted;
@@ -44,56 +89,66 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers")
 	FOnInworldCharacterSilenceStopped OnSilenceStopped;
 
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInworldCharacterVisemeBlendsUpdated, FInworldCharacterVisemeBlends, VisemeBlends);
+	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers")
+	FOnInworldCharacterVisemeBlendsUpdated OnVisemeBlendsUpdated;
+
 	virtual void BeginPlay_Implementation() override;
 	virtual void EndPlay_Implementation() override;
 
-	virtual bool Update() override;
+	virtual void OnCharacterUtterance_Implementation(const FCharacterMessageUtterance& Message) override;
+	virtual void OnCharacterUtteranceInterrupt_Implementation(const FCharacterMessageUtterance& Message) override;
 
-	virtual void Visit(const Inworld::FCharacterMessageUtterance& Event) override;
-	virtual void Visit(const Inworld::FCharacterMessageSilence& Event) override;
+	virtual void OnCharacterSilence_Implementation(const FCharacterMessageSilence& Message) override;
+	virtual void OnCharacterSilenceInterrupt_Implementation(const FCharacterMessageSilence& Message) override;
+
+	void OnSilenceEnd();
 
 	UFUNCTION(BlueprintCallable, Category = "Inworld")
 	float GetRemainingTimeForCurrentUtterance() const;
 
-	virtual void HandlePlayerTalking(const Inworld::FCharacterMessageUtterance& Message) override;
-
-	enum class EState
-	{
-		Idle,
-		Audio,
-		Silence,
-	};
-
-	EState GetState() const 
-	{
-		return State;
-	}
-
-	UFUNCTION(BlueprintCallable, Category = "Voice")
-	void SetVoiceEffect(USoundEffectSourcePresetChain* InEffectSourcePresetChain, float InVolumeMultiplier)
-	{
-		EffectSourcePresetChain = InEffectSourcePresetChain;
-		VolumeMultiplier = InVolumeMultiplier;
-	}
+	UFUNCTION(BlueprintCallable, Category = "Inworld")
+	const FInworldCharacterVisemeBlends& GetVismeBlends() const { return VisemeBlends; }
 
 protected:
-
-	virtual void PlayAudio(USoundWave* SoundWave, const std::string& AudioData);
-
 	TWeakObjectPtr<UAudioComponent> AudioComponent;
 
-	EState State = EState::Idle;
+	UPROPERTY()
+	USoundWave* SoundWave;
+
+	float SoundDuration = 0.f;
 
 private:
 	void OnAudioPlaybackPercent(const UAudioComponent* InAudioComponent, const USoundWave* InSoundWave, float Percent);
+	void OnAudioFinished(UAudioComponent* InAudioComponent);
 
 	FDelegateHandle AudioPlaybackPercentHandle;
+// ORIGINS MODIFY
+protected:
+// END ORIGINS MODIFY
+	FDelegateHandle AudioFinishedHandle;
+// ORIGINS MODIFY
+protected:
+// END ORIGINS MODIFY
 	float CurrentAudioPlaybackPercent = 0.f;
+// ORIGINS MODIFY
+private:
+// END ORIGINS MODIFY
 
-	UPROPERTY()
-	USoundEffectSourcePresetChain* EffectSourcePresetChain;
+	TArray<FCharacterUtteranceVisemeInfo> VisemeInfoPlayback;
+	FCharacterUtteranceVisemeInfo CurrentVisemeInfo;
+	FCharacterUtteranceVisemeInfo PreviousVisemeInfo;
 
-	float VolumeMultiplier = 1.f;
+// ORIGINS MODIFY
+protected:
+// END ORIGINS MODIFY
+	FInworldCharacterVisemeBlends VisemeBlends;
 
-	Inworld::Utils::FWorldTimer SilenceTimer = Inworld::Utils::FWorldTimer(0.f);
+// ORIGINS MODIFY
+private:
+// END ORIGINS MODIFY
+	FTimerHandle SilenceTimerHandle;
+
+	FInworldCharacterMessageQueueLockHandle LockHandle;
 };
+

@@ -1,57 +1,94 @@
-/**
- * Copyright 2022 Theai, Inc. (DBA Inworld)
- *
- * Use of this source code is governed by the Inworld.ai Software Development Kit License Agreement
- * that can be found in the LICENSE.md file or at https://www.inworld.ai/sdk-license
- */
+// Copyright 2023 Theai, Inc. (DBA Inworld) All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Packets.h"
+#include "InworldApi.h"
 #include "Components/ActorComponent.h"
+
 #include "InworldComponentInterface.h"
 #include "InworldCharacterPlayback.h"
 #include "InworldCharacterMessage.h"
-#include "InworldCharacterEnums.h"
+#include "InworldEnums.h"
+#include "InworldPackets.h"
+#include "InworldSockets.h"
+#include "InworldGameplayDebuggerCategory.h"
+
+#include "Containers/Queue.h"
+
+#include <GameFramework/OnlineReplStructs.h>
 
 #include "InworldCharacterComponent.generated.h"
 
+class UInworldPlayerComponent;
+class FInternetAddr;
+
 UCLASS(ClassGroup = (Inworld), meta = (BlueprintSpawnableComponent))
-class INWORLDAIINTEGRATION_API UInworldCharacterComponent : public UActorComponent, public Inworld::FPacketVisitor, public Inworld::ICharacterComponent
+class INWORLDAIINTEGRATION_API UInworldCharacterComponent : public UActorComponent, public InworldPacketVisitor, public Inworld::ICharacterComponent, public ICharacterMessageVisitor
 {
 	GENERATED_BODY()
 
 public:
 	UInworldCharacterComponent();
 
-	DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInworldCharacterEmotionalStateChanged, EInworldCharacterEmotionalState, EmotionalState, EInworldCharacterEmotionStrength, Strength);
-	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers")
-	FOnInworldCharacterEmotionalStateChanged OnEmotionalStateChanged;
+	virtual void InitializeComponent() override;
 
-	DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInworldCharacterEmotionalBehaviorChanged, EInworldCharacterEmotionalBehavior, EmotionalBehavior, EInworldCharacterEmotionStrength, Strength);
-	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers")
-	FOnInworldCharacterEmotionalBehaviorChanged OnEmotionalBehaviorChanged;
+	DECLARE_MULTICAST_DELEGATE(FOnInworldCharacterPossessed);
+	FOnInworldCharacterPossessed OnPossessed;
+	FOnInworldCharacterPossessed OnUnpossessed;
 
-	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FInworldCharacterPlayerInteractionStateChanged, bool, bInteracting); 
-	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers")
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FInworldCharacterPlayerInteractionStateChanged, bool, bInteracting);
+	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers|Interaction")
 	FInworldCharacterPlayerInteractionStateChanged OnPlayerInteractionStateChanged;
 
-	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInworldPlayerVoiceUpdated, const FString&, Text);
-	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers")
-	FOnInworldPlayerVoiceUpdated OnPlayerVoiceUpdated;
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInworldCharacterPlayerTalk, const FCharacterMessagePlayerTalk&, PlayerTalk);
+	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers|Interaction")
+	FOnInworldCharacterPlayerTalk OnPlayerTalk;
+
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInworldCharacterEmotionalBehaviorChanged, EInworldCharacterEmotionalBehavior, EmotionalBehavior, EInworldCharacterEmotionStrength, Strength);
+	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers|Emotion")
+	FOnInworldCharacterEmotionalBehaviorChanged OnEmotionalBehaviorChanged;
+
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInworldCharacterUtterance, const FCharacterMessageUtterance&, Utterance);
+	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers|Utterance")
+	FOnInworldCharacterUtterance OnUtterance;
+	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers|Utterance")
+	FOnInworldCharacterUtterance OnUtteranceInterrupt;
+
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInworldCharacterSilence, const FCharacterMessageSilence&, Silence);
+	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers|Silence")
+	FOnInworldCharacterSilence OnSilence;
+	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers|Silence")
+	FOnInworldCharacterSilence OnSilenceInterrupt;
+
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInworldCharacterTrigger, const FCharacterMessageTrigger&, Trigger);
+	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers|Trigger")
+	FOnInworldCharacterTrigger OnTrigger;
+
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInworldCharacterInteractionEnd, const FCharacterMessageInteractionEnd&, InteractionEnd);
+	UPROPERTY(BlueprintAssignable, Category = "EventDispatchers|InteractionEnd")
+	FOnInworldCharacterInteractionEnd OnInteractionEnd;
 
     virtual void BeginPlay() override;
-    virtual void EndPlay(EEndPlayReason::Type Reason);
+	virtual void EndPlay(EEndPlayReason::Type Reason);
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction);
-    
+	
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	virtual void Possess(const FInworldAgentInfo& AgentInfo) override;
+	virtual void Unpossess() override;
+
+	UFUNCTION(BlueprintCallable, Category = "Inworld")
+	void SetBrainName(const FString& Name);
+
+	UFUNCTION(BlueprintCallable, Category = "Inworld")
+	virtual const FString& GetBrainName() const override { return BrainName; }
+
     UFUNCTION(BlueprintCallable, Category = "Inworld")
-	virtual const FName& GetAgentId() const override { return AgentId; }
-    virtual void SetAgentId(const FName& InAgentId) override { AgentId = InAgentId; }
+	virtual const FString& GetAgentId() const override { return AgentId; }
 
     UFUNCTION(BlueprintCallable, Category = "Inworld")
     virtual const FString& GetGivenName() const override { return GivenName; }
-    virtual void SetGivenName(const FString& InGivenName) override { GivenName = InGivenName; }
 
     virtual AActor* GetComponentOwner() const override { return GetOwner(); }
 
@@ -63,19 +100,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inworld", meta = (DeterminesOutputType = "Class"))
 	UInworldCharacterPlayback* GetPlayback(TSubclassOf<UInworldCharacterPlayback> Class) const;
 
-    void SendTextMessage(const FString& Text);
+	virtual void HandlePacket(TSharedPtr<FInworldPacket> Packet) override;
 
-    virtual const FString& GetBrainName() const override { return BrainName; }
-
-    virtual void HandlePacket(TSharedPtr<Inworld::FInworldPacket> Packet) override;
-
-    virtual void HandleConnectionStateChanged(EInworldConnectionState State) override {}
-
-	virtual void HandlePlayerTalking(const Inworld::FTextEvent& Event);
-	virtual void HandlePlayerInteraction(bool bInteracting);
+	virtual Inworld::IPlayerComponent* GetTargetPlayer() override;
+	
+	// ORIGINS MODIFY
+	virtual
+	// END ORIGINS MODIFY
+	bool StartPlayerInteraction(UInworldPlayerComponent* Player);
+	// ORIGINS MODIFY
+	virtual
+	// END ORIGINS MODIFY
+	bool StopPlayerInteraction(UInworldPlayerComponent* Player);
 
 	UFUNCTION(BlueprintCallable, Category = "Interactions")
-	bool IsInteractingWithPlayer() const { return bInteractingWithPlayer; }
+	bool IsInteractingWithPlayer() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Emotions")
 	EInworldCharacterEmotionalBehavior GetEmotionalBehavior() const { return EmotionalBehavior; }
@@ -83,14 +122,22 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Emotions")
 	EInworldCharacterEmotionStrength GetEmotionStrength() const { return EmotionStrength; }
 
-	UFUNCTION(BlueprintCallable, Category = "Emotions")
-	EInworldCharacterEmotionalState GetEmotionalState() const { return EmotionalState; }
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void SendTextMessage(const FString& Text) const;
 
-	UFUNCTION(BlueprintCallable, Category = "Events")
-	void SendCustomEvent(const FString& Name) const;
+	UFUNCTION(BlueprintCallable, Category = "Interaction", meta = (AutoCreateRefTerm = "Params"))
+	void SendTrigger(const FString& Name, const TMap<FString, FString>& Params);
+	[[deprecated("UInworldCharacterComponent::SendCustomEvent is deprecated, please use UInworldCharacterComponent::SendTrigger")]]
+	void SendCustomEvent(const FString& Name) { SendTrigger(Name, {}); }
 
-	UFUNCTION(BlueprintCallable, Category = "Brain")
-	void SetBrainName(const FString& Name) { BrainName = Name; }
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void SendAudioMessage(USoundWave* SoundWave) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void StartAudioSession() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void StopAudioSession() const;
 
     UFUNCTION(BlueprintCallable, Category = "Interaction")
 	void CancelCurrentInteraction();
@@ -101,10 +148,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Events")
 	bool Unregister();
 
-	const TSharedPtr<Inworld::FCharacterMessage> GetCurrentMessage() const 
+	UFUNCTION(BlueprintPure, Category = "Interaction")
+	FVector GetTargetPlayerCameraLocation();
+
+	const TSharedPtr<FCharacterMessage> GetCurrentMessage() const
 	{ 
-		return CurrentMessage; 
+		return MessageQueue->CurrentMessage;
 	}
+
+	UFUNCTION(BlueprintCallable, Category = "Message")
+	void MakeMessageQueueLock(UPARAM(ref) FInworldCharacterMessageQueueLockHandle& Handle);
+
+	UFUNCTION(BlueprintCallable, Category = "Message")
+	static void ClearMessageQueueLock(UPARAM(ref) FInworldCharacterMessageQueueLockHandle& Handle);
 
 	template<class T>
 	T* GetPlaybackNative()
@@ -122,83 +178,74 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Inworld")
 	TArray<TSubclassOf<UInworldCharacterPlayback>> PlaybackTypes;
 
-	UPROPERTY(EditAnywhere, Category = "Inworld")
-	bool bIsMainCharacter = true;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inworld")
-	bool bHandlePlayerTalking = true;
-
 protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
 	FString UiName = "Character";
 
-	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Animation")
-	class UDataTable* AnimationDT;
-
-	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Animation")
-	class UDataTable* SemanticGestureDT;
-
 private:
 
-    virtual void Visit(const Inworld::FTextEvent& Event) override;
-    virtual void Visit(const Inworld::FDataEvent& Event) override;
-    virtual void Visit(const Inworld::FSilenceEvent& Event) override;
-    virtual void Visit(const Inworld::FControlEvent& Event) override;
-    virtual void Visit(const Inworld::FEmotionEvent& Event) override;
-    virtual void Visit(const Inworld::FCustomEvent& Event) override;
+	virtual void Visit(const FInworldTextEvent& Event) override;
+	virtual void Visit(const FInworldAudioDataEvent& Event) override;
+	virtual void Visit(const FInworldSilenceEvent& Event) override;
+	virtual void Visit(const FInworldControlEvent& Event) override;
+	virtual void Visit(const FInworldEmotionEvent& Event) override;
+	virtual void Visit(const FInworldCustomEvent& Event) override;
 
-	template<class T>
-	TSharedPtr<T> FindOrAddMessage(const FName& InteractionId, const FName& UtteranceId)
-	{
-		TSharedPtr<T> Message = FindMessage<T>(InteractionId, UtteranceId);
-		if (Message.IsValid())
-		{
-			return Message;
-		}
-
-		Message = MakeShared<T>();
-		Message->InteractionId = InteractionId;
-		Message->UtteranceId = UtteranceId;
-		PendingMessages.Add(Message);
-		return Message;
-	}
-
-	template<class T>
-	TSharedPtr<T> FindMessage(const FName& InteractionId, const FName& UtteranceId)
-	{
-		if (auto* Message = PendingMessages.FindByPredicate([&InteractionId, &UtteranceId](const auto& U) { return U->InteractionId == InteractionId && U->UtteranceId == UtteranceId; }))
-		{
-			return StaticCastSharedPtr<T>(*Message);
-		}
-
-		return nullptr;
-	}
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_VisitText(const FInworldTextEvent& Event);
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_VisitSilence(const FInworldSilenceEvent& Event);
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_VisitControl(const FInworldControlEvent& Event);
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_VisitEmotion(const FInworldEmotionEvent& Event);
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_VisitCustom(const FInworldCustomEvent& Event);
 
 	bool IsCustomGesture(const FString& CustomEventName) const;
 
-    UPROPERTY(EditAnywhere, Category = "Inworld")
-	FString BrainName;
+	void VisitAudioOnClient(const FInworldAudioDataEvent& Event);
+
+	UFUNCTION()
+	void OnRep_TargetPlayer(UInworldPlayerComponent* OldPlayer);
+
+	UFUNCTION()
+	void OnRep_AgentId(FString OldAgentId);
+
+	TQueue<FInworldAudioDataEvent> PendingRepAudioEvents;
+
+	UPROPERTY(ReplicatedUsing = OnRep_TargetPlayer)
+	UInworldPlayerComponent* TargetPlayer;
+	
+	TWeakObjectPtr<UInworldApiSubsystem> InworldSubsystem;
 
 	UPROPERTY()
 	TArray<UInworldCharacterPlayback*> Playbacks;
 
-	TArray<TSharedPtr<Inworld::FCharacterMessage>> PendingMessages;
-	TArray<FName> CancelledInteractions;
+	TSharedRef<FCharacterMessageQueue> MessageQueue;
+	float TimeToForceQueue = 3.f;
 
-	TSharedPtr<Inworld::FCharacterMessage> CurrentMessage;
+	virtual void Handle(const FCharacterMessageUtterance& Message) override;
+	virtual void Interrupt(const FCharacterMessageUtterance& Message) override;
 
-	FName TriggerUtterance;
-	FName TriggerInteraction;
+	virtual void Handle(const FCharacterMessageSilence& Message) override;
+	virtual void Interrupt(const FCharacterMessageSilence& Message) override;
+
+	virtual void Handle(const FCharacterMessageTrigger& Message) override;
+
+	virtual void Handle(const FCharacterMessageInteractionEnd& Message) override;
 
     EInworldCharacterEmotionalBehavior EmotionalBehavior = EInworldCharacterEmotionalBehavior::NEUTRAL;
     EInworldCharacterEmotionStrength EmotionStrength = EInworldCharacterEmotionStrength::UNSPECIFIED;
-	EInworldCharacterEmotionalState EmotionalState = EInworldCharacterEmotionalState::Idle;
 
-    FName AgentId = NAME_None;
+	UPROPERTY(EditAnywhere, Category = "Inworld")
+	FString BrainName;
+
+	UPROPERTY(ReplicatedUsing = OnRep_AgentId)
+	FString AgentId;
 	
 	FString GivenName;
 
-	bool bInteractingWithPlayer = false;
-    bool bRegistered = false;
+	friend class FInworldGameplayDebuggerCategory;
 };

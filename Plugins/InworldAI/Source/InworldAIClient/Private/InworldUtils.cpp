@@ -1,25 +1,18 @@
-/**
- * Copyright 2022 Theai, Inc. (DBA Inworld)
- *
- * Use of this source code is governed by the Inworld.ai Software Development Kit License Agreement
- * that can be found in the LICENSE.md file or at https://www.inworld.ai/sdk-license
- */
+// Copyright 2023 Theai, Inc. (DBA Inworld) All Rights Reserved.
 
 #include "InworldUtils.h"
-#include "proto/ProtoDisableWarning.h"
 #include "Logging/LogMacros.h"
-#include "InworldAIClientModule.h"
-#include "SslCredentials.h"
 #include "Audio.h"
 #include "Sound/SoundWave.h"
 #include "Sound/SoundGroups.h"
 #include "Engine/Engine.h"
 #include "Misc/FileHelper.h"
-#include "Engine/World.h"
+#include <Engine/World.h>
 
 #define UI UI_ST
 THIRD_PARTY_INCLUDES_START
 #include "openssl/hmac.h"
+#include "Utils/SslCredentials.h"
 THIRD_PARTY_INCLUDES_END
 #undef UI
 
@@ -99,7 +92,92 @@ bool Inworld::Utils::SoundWaveToString(USoundWave* SoundWave, std::string& Strin
     return true;
 }
 
-INWORLDAICLIENT_API bool Inworld::Utils::SoundWaveToVec(USoundWave* SoundWave, std::vector<int16>& data)
+void Inworld::Utils::DataArray16ToVec16(const TArray<int16>& Data, std::vector<int16>& VecData)
+{
+    VecData.resize(Data.Num());
+    FMemory::Memcpy((void*)VecData.data(), (void*)Data.GetData(), VecData.size() * sizeof(int16));
+}
+
+void Inworld::Utils::DataArray16ToString(const TArray<int16>& Data, std::string& String)
+{
+	String.resize(Data.Num() * 2);
+	FMemory::Memcpy((void*)String.data(), (void*)Data.GetData(), String.size());
+}
+
+void Inworld::Utils::DataArrayToString(const TArray<uint8>& Data, std::string& String)
+{
+	String.resize(Data.Num());
+	FMemory::Memcpy((void*)String.data(), (void*)Data.GetData(), String.size());
+}
+
+void Inworld::Utils::StringToDataArray(const std::string& String, TArray<uint8>& Data)
+{
+	Data.SetNumUninitialized(String.size());
+	FMemory::Memcpy((void*)Data.GetData(), (void*)String.data(), String.size());
+}
+
+void Inworld::Utils::AppendDataArrayToString(const TArray<uint8>& Data, std::string& String)
+{
+	const uint32 Size = String.size();
+	String.resize(String.size() + Data.Num());
+	FMemory::Memcpy((void*)(String.data() + Size), (void*)Data.GetData(), Data.Num());
+}
+
+void Inworld::Utils::StringToDataArrays(const std::string& String, TArray<TArray<uint8>*>& Data, uint32 DivSize)
+{
+	uint32 Idx = 0;
+	uint32 Size = 0;
+	for (uint32 Head = 0; Head < String.size(); Head += Size, Idx++)
+	{
+		Size = FMath::Min((uint32)String.size() - Head, DivSize);
+		Data[Idx]->SetNumUninitialized(Size);
+		FMemory::Memcpy((void*)Data[Idx]->GetData(), (void*)(String.data() + Head), Size);
+	}
+}
+
+void Inworld::Utils::DataArrayToDataArrays(const TArray<uint8>& Data, TArray<TArray<uint8>*>& Datas, uint32 DivSize)
+{
+	uint32 Idx = 0;
+	uint32 Size = 0;
+	for (int32 Head = 0; Head < Data.Num(); Head += Size, Idx++)
+	{
+		Size = FMath::Min(Data.Num() - Head, (int32)DivSize);
+		Datas[Idx]->SetNumUninitialized(Size);
+		FMemory::Memcpy((void*)Datas[Idx]->GetData(), (void*)(Data.GetData() + Head), Size);
+	}
+}
+
+void Inworld::Utils::StringToArrayStrings(const std::string& Data, TArray<std::string*>& Datas, uint32 DivSize)
+{
+	uint32 Idx = 0;
+	int32 Size = 0;
+	for (int32 Head = 0; Head < Data.size(); Head += Size, Idx++)
+	{
+		Size = FMath::Min((int32)(Data.size() - Head), (int32)DivSize);
+		Datas[Idx]->resize(Size);
+		FMemory::Memcpy((void*)Datas[Idx]->data(), (void*)(Data.data() + Head), Size);
+	}
+}
+
+void Inworld::Utils::DataArraysToString(const TArray<const TArray<uint8>*>& Data, std::string& String)
+{
+	uint32 Size = 0;
+	for (auto& D : Data)
+	{
+		Size += D->Num();
+	}
+
+	String.resize(Size);
+	
+	uint32 Head = 0;
+	for (auto& D : Data)
+	{
+		FMemory::Memcpy((void*)(String.data() + Head), (void*)D->GetData(), D->Num());
+		Head += D->Num();
+	}
+}
+
+bool Inworld::Utils::SoundWaveToVec(USoundWave* SoundWave, std::vector<int16>& data)
 {
 	constexpr int32 SampleRate = 48000;
 	constexpr int32 DownsampleRate = SampleRate / 16000;
@@ -132,7 +210,40 @@ INWORLDAICLIENT_API bool Inworld::Utils::SoundWaveToVec(USoundWave* SoundWave, s
 	return true;
 }
 
-INWORLDAICLIENT_API USoundWave* Inworld::Utils::VecToSoundWave(const std::vector<int16>& data)
+bool Inworld::Utils::SoundWaveToDataArray(USoundWave* SoundWave, TArray<int16>& Data)
+{
+	constexpr int32 SampleRate = 48000;
+	constexpr int32 DownsampleRate = SampleRate / 16000;
+	constexpr int32 NumChannels = 2;
+	if (!ensure(
+		SoundWave->GetSampleRateForCurrentPlatform() == SampleRate &&
+		SoundWave->NumChannels == NumChannels
+	))
+	{
+		return false;
+	}
+
+	const int16* WaveData = (const int16*)SoundWave->RawPCMData;
+	const int32 WaveDataSize = SoundWave->RawPCMDataSize;
+	constexpr int32 MinSize = 0.01f * SampleRate * NumChannels * sizeof(uint16); // 10ms
+	if (!ensure(WaveData && WaveDataSize > MinSize))
+	{
+		return false;
+	}
+
+	const auto nSamples = WaveDataSize / (NumChannels * sizeof(uint16_t) * DownsampleRate);
+	Data.SetNumUninitialized(nSamples);
+	int j = 0;
+	for (int i = 0; i < nSamples; i++)
+	{
+		Data[i] = WaveData[j];
+		j += NumChannels * DownsampleRate;
+	}
+
+	return true;
+}
+
+USoundWave* Inworld::Utils::VecToSoundWave(const std::vector<int16>& data)
 {
 	const int16* srcPtr = data.data();
 	const auto nSamples = data.size();
@@ -174,55 +285,4 @@ std::string Inworld::Utils::ToHex(const TArray<uint8>& Data)
 	}
 
 	return Res;
-}
-
-void Inworld::Utils::Log(const FString& Text, bool bAddOnScreenLog, FColor DisplayColor, float TimeToDisplay)
-{
-    UE_LOG(LogInworld, Log, TEXT("%s"), *Text);
-
-#if INWORLD_ONSCREEN_LOG
-    if (bAddOnScreenLog && GEngine)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, TimeToDisplay, DisplayColor, Text, false);
-    }
-#endif
-}
-
-void Inworld::Utils::ErrorLog(const FString& Text, bool bAddOnScreenLog, float TimeToDisplay)
-{
-    UE_LOG(LogInworld, Error, TEXT("%s"), *Text);
-
-#if INWORLD_ONSCREEN_LOG_ERROR
-    if (bAddOnScreenLog && GEngine)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, TimeToDisplay, FTextColors::Error(), Text, false);
-    }
-#endif
-}
-
-void Inworld::Utils::PrepareSslCreds()
-{
-    const FString RootsFileDir = FPaths::ProjectDir() + "/roots.pem";
-    if (!FPaths::FileExists(RootsFileDir))
-    {
-        FFileHelper::SaveStringArrayToFile(SslRootsFileContents, *RootsFileDir);
-    }
-    
-	FPlatformMisc::SetEnvironmentVar(TEXT("GRPC_DEFAULT_SSL_ROOTS_FILE_PATH"), *FPaths::ConvertRelativePathToFull(RootsFileDir));
-}
-
-void Inworld::Utils::FWorldTimer::SetOneTime(UWorld* World, float InThreshold)
-{
-    Threshold = InThreshold;
-    LastTime = World->GetTimeSeconds();
-}
-
-bool Inworld::Utils::FWorldTimer::CheckPeriod(UWorld* World)
-{
-    if (IsExpired(World))
-    {
-        LastTime = World->GetTimeSeconds();
-        return true;
-    }
-    return false;
 }

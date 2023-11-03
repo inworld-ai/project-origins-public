@@ -1,17 +1,10 @@
-/**
- * Copyright 2022 Theai, Inc. (DBA Inworld)
- *
- * Use of this source code is governed by the Inworld.ai Software Development Kit License Agreement
- * that can be found in the LICENSE.md file or at https://www.inworld.ai/sdk-license
- */
+// Copyright 2023 Theai, Inc. (DBA Inworld) All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "InworldState.h"
-#include "Packets.h"
 #include "InworldCharacterComponent.h"
-#include "InworldUtils.h"
+#include "InworldGameplayDebuggerCategory.h"
 
 #include "InworldPlayerComponent.generated.h"
 
@@ -25,34 +18,63 @@ class INWORLDAIINTEGRATION_API UInworldPlayerComponent : public UActorComponent,
 
 public:
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnInworldPlayerTargetChange, UInworldCharacterComponent*);
-    FOnInworldPlayerTargetChange OnTargetChange;
+    FOnInworldPlayerTargetChange OnTargetSet;
+    FOnInworldPlayerTargetChange OnTargetClear;
 
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-    virtual void HandleConnectionStateChanged(EInworldConnectionState State) override;
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-    virtual Inworld::ICharacterComponent* GetTargetCharacter() override { return TargetCharacter.Get(); }
+    UFUNCTION(BlueprintCallable, Category = "Interaction", meta = (Displayname = "GetTargetCharacter"))
+    UInworldCharacterComponent* GetTargetInworldCharacter() { return static_cast<UInworldCharacterComponent*>(GetTargetCharacter()); }
 
-    UFUNCTION(BlueprintCallable, Category = "Interaction")
-    void SetTargetCharacter(UInworldCharacterComponent* Character);
+    virtual Inworld::ICharacterComponent* GetTargetCharacter() override;
 
-    UFUNCTION(BlueprintCallable, Category = "Interaction")
-    void ClearTargetCharacter();
+    UFUNCTION(BlueprintCallable, Category = "Interaction", meta = (Displayname = "SetTargetCharacter"))
+    void SetTargetInworldCharacter(UInworldCharacterComponent* Character);
+
+    UFUNCTION(BlueprintCallable, Category = "Interaction", meta = (Displayname = "ClearTargetCharacter"))
+    void ClearTargetInworldCharacter();
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
-    bool IsInteracting() { return GetTargetCharacter() != nullptr; }
+    bool IsInteracting() { return !TargetCharacterAgentId.IsEmpty(); }
 
-    void StartAudioSession();
-    void StopAudioSession();
-    void SendAudioDataMessage(const std::string& Data);
-    void SendAudioMessage(USoundWave* SoundWave);
+    UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Interaction")
+    void SendTextMessageToTarget(const FString& Message);
+
+    UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Interaction")
+    void SendTextMessage(const FString& Message, const FString& AgentId);
+
+    UFUNCTION(BlueprintCallable, Category = "Interaction", meta = (AutoCreateRefTerm = "Params"))
+    void SendTriggerToTarget(const FString& Name, const TMap<FString, FString>& Params);
+    [[deprecated("UInworldPlayerComponent::SendCustomEventToTarget is deprecated, please use UInworldPlayerComponent::SendTriggerToTarget")]]
+    void SendCustomEventToTarget(const FString& Name) { SendTriggerToTarget(Name, {}); }
+
+    UFUNCTION(BlueprintCallable, Category = "Interaction")
+    void StartAudioSessionWithTarget();
+
+    UFUNCTION(BlueprintCallable, Category = "Interaction")
+    void StopAudioSessionWithTarget();
+
+    UFUNCTION(BlueprintCallable, Category = "Interaction")
+    void SendAudioMessageToTarget(USoundWave* SoundWave);
+    void SendAudioDataMessageToTarget(const TArray<uint8>& Data);
+    void SendAudioDataMessageWithAECToTarget(const TArray<uint8>& InputData, const TArray<uint8>& OutputData);
 
 private:
+	UFUNCTION()
+	void OnRep_TargetCharacterAgentId(FString OldAgentId);
+
+    FDelegateHandle CharacterTargetUnpossessedHandle;
+
     UPROPERTY(EditAnywhere, Category = "UI")
     FString UiName = "Player";
 
     TWeakObjectPtr<UInworldApiSubsystem> InworldSubsystem;
 
-    TWeakObjectPtr<UInworldCharacterComponent> TargetCharacter;
+	UPROPERTY(ReplicatedUsing = OnRep_TargetCharacterAgentId)
+	FString TargetCharacterAgentId;
+
+	friend class FInworldGameplayDebuggerCategory;
 };
