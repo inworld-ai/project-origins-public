@@ -1,5 +1,6 @@
 # Visual Studio 2015 user specific files
 .vs/
+.vsconfig
 
 # Compiled Object files
 *.slo
@@ -16,6 +17,7 @@
 *.dylib
 *.dll
 !Plugins/OVRLipSync/ThirdParty/Lib/Win64/OVRLipSync.dll
+!Plugins/InworldAI/Source/ThirdParty/Inworld/lib/Win64/webrtc_aec_plugin.dll
 
 # Fortran module files
 *.mod
